@@ -1,0 +1,138 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {uid}
+// Fields:
+//   - uid: string (required)
+//   - displayName: string
+//   - email: string (required, email format)
+//   - photoURL: string
+//   - role: string (enum: admin, operator)
+//
+// Collection: operations
+// Document ID: {operationId}
+// Fields:
+//   - date: string (required, date format)
+//   - operatorId: string (required)
+//   - operatorName: string
+//   - tractor: string
+//   - implement: string
+//   - task: string (required)
+//   - crop: string
+//   - sector: string (required)
+//   - initialMeter: number (required)
+//   - finalMeter: number
+//   - totalHours: number
+//   - createdAt: timestamp (required)
+//   - synced: boolean
+//
+// Collection: tasks
+// Document ID: {taskId}
+// Fields:
+//   - name: string (required)
+//   - active: boolean
+//
+// Collection: operators
+// Document ID: {operatorId}
+// Fields:
+//   - name: string (required)
+//   - active: boolean
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() &&
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email.lower() == "dhyonathan63@gmail.com"));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'displayName', 'email', 'photoURL', 'role']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             isValidEmail(data.email) &&
+             (data.role in ['admin', 'operator']);
+    }
+
+    function isValidOperation(data) {
+      return hasRequiredFields(['date', 'operatorId', 'task', 'sector', 'initialMeter', 'createdAt']) &&
+             (data.operatorId == request.auth.uid || isAdmin()) &&
+             data.initialMeter is number && data.initialMeter >= 0 &&
+             (data.finalMeter == null || (data.finalMeter is number && data.finalMeter >= data.initialMeter));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(uid) && isValidUser(request.resource.data) && (request.resource.data.role == 'operator' || isAdmin());
+      allow update: if isAuthenticated() && isOwner(uid) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /operations/{operationId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidOperation(request.resource.data);
+      allow update: if isAdmin() && isValidOperation(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /tractors/{tractorId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /implements/{implementId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /operators/{operatorId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Operações Café</string>
+    <string name="title_activity_main">Operações Café</string>
+    <string name="package_name">com.operacoes.cafe</string>
+    <string name="custom_url_scheme">com.operacoes.cafe</string>
+</resources>

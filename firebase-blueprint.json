@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System operator profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "operator"] }
+      },
+      "required": ["uid", "email"]
+    },
+    "Operation": {
+      "title": "Operation",
+      "description": "A field operation log entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "operatorId": { "type": "string" },
+        "operatorName": { "type": "string" },
+        "tractor": { "type": "string" },
+        "implement": { "type": "string" },
+        "task": { "type": "string" },
+        "crop": { "type": "string" },
+        "sector": { "type": "string" },
+        "initialMeter": { "type": "number" },
+        "finalMeter": { "type": "number" },
+        "totalHours": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "synced": { "type": "boolean" }
+      },
+      "required": ["date", "operatorId", "task", "sector", "initialMeter"]
+    },
+    "Tractor": {
+      "title": "Tractor",
+      "description": "A tractor in the fleet",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["name"]
+    },
+    "Implement": {
+      "title": "Implement",
+      "description": "A field implement",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["name"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A field operation task type",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["name"]
+    },
+    "Operator": {
+      "title": "Operator",
+      "description": "A manual operator name for selection",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["name"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/operations/{operationId}": {
+      "schema": "Operation",
+      "description": "Field operation logs"
+    },
+    "/tractors/{tractorId}": {
+      "schema": "Tractor",
+      "description": "List of tractors"
+    },
+    "/implements/{implementId}": {
+      "schema": "Implement",
+      "description": "List of implements"
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "List of task types"
+    },
+    "/operators/{operatorId}": {
+      "schema": "Operator",
+      "description": "List of manual operator names"
+    },
+    "/settings/{settingId}": {
+      "schema": "object",
+      "description": "System settings (e.g., Google Sheets tokens)"
+    }
+  }
+}
