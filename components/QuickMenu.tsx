@@ -33,6 +33,50 @@ export function QuickMenu({ isOpen, onClose }: QuickMenuProps) {
   const pathname = usePathname();
   const { user, profile, logout } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleCloudSync = async () => {
+    if (isSyncing) return;
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      alert('Você está offline. Conecte-se à internet para sincronizar.');
+      return;
+    }
+
+    const savedQueue = localStorage.getItem('sheets_offline_queue');
+    const queue: any[] = savedQueue ? JSON.parse(savedQueue) : [];
+
+    if (queue.length === 0) {
+      alert('Tudo sincronizado! Nenhum registro pendente na fila.');
+      return;
+    }
+
+    setIsSyncing(true);
+    const failed: any[] = [];
+
+    for (const item of queue) {
+      try {
+        const res = await fetch('/api/sheets/append', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item),
+        });
+        if (!res.ok) throw new Error('Failed to sync');
+      } catch {
+        failed.push(item);
+      }
+    }
+
+    localStorage.setItem('sheets_offline_queue', JSON.stringify(failed));
+    setIsSyncing(false);
+
+    const synced = queue.length - failed.length;
+    if (failed.length === 0) {
+      alert(`Sincronização concluída! ${synced} registro(s) enviado(s) para a nuvem.`);
+    } else {
+      alert(`${synced} registro(s) sincronizado(s). ${failed.length} falharam e permanecem na fila.`);
+    }
+  };
 
   const menuItems = [
     { name: 'Painel Geral', href: '/', icon: LayoutDashboard, description: 'Visão geral da frota e clima', tags: ['dashboard', 'home', 'inicio'] },
@@ -55,8 +99,8 @@ export function QuickMenu({ isOpen, onClose }: QuickMenuProps) {
   });
 
   const quickActions = [
-    { name: 'Exportar Excel', icon: Download, action: () => { window.location.href = '/history'; } },
-    { name: 'Sincronizar Nuvem', icon: Cloud, action: () => { alert('Sincronização iniciada...'); } },
+    { name: 'Exportar Excel', icon: Download, action: () => { window.location.href = '/history'; }, closeOnClick: true },
+    { name: isSyncing ? 'Sincronizando...' : 'Sincronizar Nuvem', icon: Cloud, action: handleCloudSync, closeOnClick: false },
   ];
 
   return (
@@ -159,10 +203,11 @@ export function QuickMenu({ isOpen, onClose }: QuickMenuProps) {
                       {quickActions.map((action) => (
                         <button
                           key={action.name}
-                          onClick={() => { action.action(); onClose(); }}
-                          className="flex flex-col items-center justify-center p-6 bg-surface-container rounded-2xl border-2 border-transparent hover:border-primary/30 hover:bg-primary/5 transition-all group"
+                          disabled={isSyncing}
+                          onClick={() => { action.action(); if (action.closeOnClick) onClose(); }}
+                          className="flex flex-col items-center justify-center p-6 bg-surface-container rounded-2xl border-2 border-transparent hover:border-primary/30 hover:bg-primary/5 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <action.icon size={24} className="text-primary mb-3 group-hover:scale-110 transition-transform" />
+                          <action.icon size={24} className={cn("text-primary mb-3 transition-transform", isSyncing && action.icon === Cloud ? "animate-pulse" : "group-hover:scale-110")} />
                           <span className="text-xs font-bold uppercase tracking-wider">{action.name}</span>
                         </button>
                       ))}
