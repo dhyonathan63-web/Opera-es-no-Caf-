@@ -6,6 +6,65 @@ import { adminDb } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
+function normalizeComparable(value: unknown) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\b0+(\d)/g, '$1')
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+function fieldMatches(areaValue: unknown, selectedValue: unknown) {
+  const area = normalizeComparable(areaValue);
+  const selected = normalizeComparable(selectedValue);
+  if (!area || !selected) return false;
+  return area === selected || area.includes(selected) || selected.includes(area);
+}
+
+function isAreaActive(area: any) {
+  const value = area.active ?? area.ativo ?? area.ATIVO ?? true;
+  if (typeof value === 'boolean') return value;
+  const normalized = normalizeComparable(value);
+  return !['NAO', 'N', 'FALSE', 'INATIVO', '0'].includes(normalized);
+}
+
+function getAreaName(area: any) {
+  return String(area?.name || area?.nome || area?.NOME || area?.nomeArea || area?.NOME_AREA || area?.id || '');
+}
+
+function getAreaCrop(area: any) {
+  return String(area?.crop || area?.safraCafe || area?.SAFRA_CAFE || area?.['SAFRA/CAFE'] || area?.cafe || area?.CAFE || '');
+}
+
+function getAreaSector(area: any) {
+  return String(area?.sector || area?.setor || area?.SETOR || '');
+}
+
+function getAreaKmlLink(area: any) {
+  return String(area?.kmlLink || area?.linkKml || area?.LINK_KML || area?.link || area?.KML || area?.kml || '');
+}
+
+function getAreaHectares(area: any) {
+  const value = area?.hectares || area?.HECTARES || area?.areaHa;
+  return value === undefined || value === null ? '' : String(value);
+}
+
+async function findKmlAreaFromDatabase(crop: string, sector: string) {
+  try {
+    const snapshot = await adminDb.collection('areas_kml').get();
+    const docs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return docs.find((area) => (
+      isAreaActive(area) &&
+      fieldMatches(getAreaCrop(area), crop) &&
+      fieldMatches(getAreaSector(area), sector)
+    )) || null;
+  } catch (error) {
+    console.error('Error reading areas_kml from Firestore:', error);
+    return null;
+  }
+}
+
 export async function POST(request: Request) {
   const cookieStore = await cookies();
   let tokensStr = cookieStore.get('google_tokens')?.value;
@@ -69,9 +128,12 @@ export async function POST(request: Request) {
   } = body;
 
   const totalHours = (finalMeter && initialMeter) ? (parseFloat(finalMeter) - parseFloat(initialMeter)).toFixed(2) : '0';
-  const kmlName = KML || areaKmlName || '';
-  const kmlLink = LINK_KML_AREA || LINK_KML || areaKmlLink || '';
-  const estimatedArea = areaEstimated || areaKmlHectares || '';
+  const areaFromDb = await findKmlAreaFromDatabase(String(crop || ''), String(sector || ''));
+
+  const kmlName = KML || areaKmlName || getAreaName(areaFromDb) || '';
+  const kmlLink = LINK_KML_AREA || LINK_KML || areaKmlLink || getAreaKmlLink(areaFromDb) || '';
+  const kmlAreaId = areaKmlId || areaFromDb?.id || '';
+  const estimatedArea = areaEstimated || areaKmlHectares || getAreaHectares(areaFromDb) || '';
 
   try {
     console.log('Attempting to append to spreadsheet:', spreadsheetId);
@@ -97,28 +159,28 @@ export async function POST(request: Request) {
       requestBody: {
         values: [
           [
-            initialMeter,           // 1. HORIMETRO INICIAL
-            operatorName,           // 2. OPERADOR
-            tractor,                // 3. TRATOR
-            implement,              // 4. IMPLEMENTO
-            task,                   // 5. OPERAÇÃO
-            crop,                   // 6. SAFRA/CAFÉ
-            sector,                 // 7. SETOR
-            finalMeter,             // 8. HORIMETRO FINAL
-            date,                   // 9. DATA
-            totalHours,             // 10. DURAÇÃO
-            distanceGps || '',      // 11. DISTANCIA GPS
-            estimatedArea,          // 12. AREA ESTIMADA / HECTARES DO KML
-            kmlName,                // 13. KML
-            kmlLink,                // 14. LINK KML
-            entryId || areaKmlId || '', // 15. ENTRY_ID / AREA_KML_ID
-            productionPerHa || ''   // 16. PRODUÇÃO POR HA
+            initialMeter,              // 1. HORIMETRO INICIAL
+            operatorName,              // 2. OPERADOR
+            tractor,                   // 3. TRATOR
+            implement,                 // 4. IMPLEMENTO
+            task,                      // 5. OPERAÇÃO
+            crop,                      // 6. SAFRA/CAFÉ
+            sector,                    // 7. SETOR
+            finalMeter,                // 8. HORIMETRO FINAL
+            date,                      // 9. DATA
+            totalHours,                // 10. DURAÇÃO
+            distanceGps || '',         // 11. DISTANCIA GPS
+            estimatedArea,             // 12. AREA ESTIMADA / HECTARES DO KML
+            kmlName,                   // 13. KML
+            kmlLink,                   // 14. LINK KML
+            entryId || kmlAreaId || '', // 15. ENTRY_ID / AREA_KML_ID
+            productionPerHa || ''      // 16. PRODUÇÃO POR HA
           ]
         ],
       },
     });
     console.log('Sheets append response:', response.status, response.statusText);
-    return NextResponse.json({ success: true, data: response.data });
+    return NextResponse.json({ success: true, data: response.data, kml: { id: kmlAreaId, name: kmlName, link: kmlLink } });
   } catch (error: any) {
     console.error('Error appending to sheet:', error);
 
